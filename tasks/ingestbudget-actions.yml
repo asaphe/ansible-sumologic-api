@@ -1,0 +1,77 @@
+---
+  - block:
+      - name: delete ingest budgets (loop over api response)
+        uri:
+          method: DELETE
+          url: "{{ url_budgets }}/{{ item.item.id }}"
+          user: "{{ sApi_username }}"
+          password: "{{ sApi_password }}"
+          force_basic_auth: yes
+          status_code: 200, 204
+        with_items: "{{ _ingestbudgets.results }}"
+        when: delete_ingestbudgets and _ingestbudget_name is not defined
+        # WILL Delete all of the budgets returned by API GET ingest budgets
+
+      - name: delete ingest budget by id/name
+        uri:
+          method: DELETE
+          url: "{{ url_budgets }}/{{ item.item.id }}"
+          user: "{{ sApi_username }}"
+          password: "{{ sApi_password }}"
+          force_basic_auth: yes
+          status_code: 200, 204
+        with_items: "{{ _ingestbudgets.results }}"
+        when:
+          - (delete_ingestbudgets)
+          - (_ingestbudget_name is defined and item.item.name in _ingestbudget_name) or (_ingestbudget_id is defined and item.item.id in _ingestbudget_id)
+        # Delete specified budgets
+
+    tags: [sumo.logic.api.ingestbudget.actions.delete]
+
+  - block:
+      - name: create ingest budgets
+        uri:
+          method: POST
+          url: "{{ url_budgets }}"
+          user: "{{ sApi_username }}"
+          password: "{{ sApi_password }}"
+          force_basic_auth: yes
+          body_format: json
+          body: "{{ item|to_json }}"
+        with_items: "{{ _predef_ingestbudgets }}"
+        when: create_ingestbudget|default(False)|bool and (item.name not in _api_ingestbudget_names)
+        vars:
+          _api_ingestbudget_names: "{{ _ingestbudgets.results | map(attribute='item.name') | list }}"
+        # create ingest budgets (if not in api response)
+
+    tags: [sumo.logic.api.ingestbudget.actions.create]
+
+  - block:
+      - name: update ingest budget
+        uri:
+          method: POST
+          url: "{{ url_budgets }}/{{ item.item.id }}"
+          user: "{{ sApi_username }}"
+          password: "{{ sApi_password }}"
+          force_basic_auth: yes
+          body_format: json
+          body: "{{ _updatebudget_json }}"
+        with_items: "{{ _ingestbudgets.results }}"
+        when: update_ingestbudget|default(False)|bool and (item.item.name in _api_ingestbudget_names)
+        vars:
+          _api_ingestbudget_names: "{{ _ingestbudgets.results | map(attribute='item.name') | list }}"
+
+    tags: [sumo.logic.api.ingestbudget.actions.update]
+
+  - block:
+      - name: reset ingest budget usage
+        uri:
+          method: POST
+          url: "{{ url_budgets }}/{{ item }}/usage/reset"
+          user: "{{ sApi_username }}"
+          password: "{{ sApi_password }}"
+          force_basic_auth: yes
+        with_items: "{{ _ingestbudget_ids }}"
+        when: reset_ingestbudget|default(False)|bool and (_ingestbudget_ids is defined)
+
+    tags: [sumo.logic.api.ingestbudget.actions.reset]

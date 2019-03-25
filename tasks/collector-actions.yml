@@ -1,0 +1,73 @@
+---
+  - block:
+      - name: delete collectors from Sumo Logic
+        uri:
+          method: DELETE
+          url: "{{ url_collectors }}/{{ item.item.id }}"
+          user: "{{ sApi_username }}"
+          password: "{{ sApi_password }}"
+          force_basic_auth: yes
+          status_code: 200
+        with_items: "{{ rjson_collectors_detailed_byenv.results|list|unique }}"
+        when:
+          - (rjson_collectors_detailed_byenv is succeeded)
+          - (not item is skipped)
+          - ('AWS' not in item.item.name and delete_list is not defined) or ('AWS' not in item.item.name) and (delete_list|list is defined and (item.item[delete_filter] in delete_list))
+
+    when: delete_collectors|default(False)|bool
+    tags: [sumo.logic.api.collector.actions.delete]
+
+  - block:
+      - name: update collectors by names/ids (filter_bynames/filter_byids)
+        uri:
+          method: PUT
+          headers:
+            If-Match: "{{ item.etag }}"
+          url: "{{ url_collectors }}/{{ item.item.id }}"
+          user: "{{ sApi_username }}"
+          password: "{{ sApi_password }}"
+          force_basic_auth: yes
+          body_format: json
+          body: "{{ _collector_json }}"
+          status_code: 200
+        with_items: "{{ rjson_collectors_detailed_by_namesids.results|list|unique }}"
+        when:
+          - (rjson_collectors_detailed_by_namesids is succeeded)
+          - (not item is skipped)
+
+      - name: "update collectors by env [{{ env }}]"
+        uri:
+          method: PUT
+          headers:
+            If-Match: "{{ item.etag }}"
+          url: "{{ url_collectors }}/{{ item.item.id }}"
+          user: "{{ sApi_username }}"
+          password: "{{ sApi_password }}"
+          force_basic_auth: yes
+          body_format: json
+          body: "{{ _collector_json }}"
+          status_code: 200
+        with_items: "{{ rjson_collectors_detailed_byenv.results|list|unique }}"
+        when:
+          - (rjson_collectors_detailed_byenv is succeeded)
+          - (not item is skipped)
+
+      - name: update dangling collectors
+        uri:
+          method: PUT
+          headers:
+            If-Match: "{{ item.etag }}"
+          url: "{{ url_collectors }}/{{ item.item.id }}"
+          user: "{{ sApi_username }}"
+          password: "{{ sApi_password }}"
+          force_basic_auth: yes
+          body_format: json
+          body: "{{ _collector_json }}"
+          status_code: 200
+        with_items: "{{ rjson_collectors_detailed_bydangling.results|list|unique }}"
+        when:
+          - (get_dangling_collectors|bool)
+          - (not item is skipped)
+
+    when: delete_collectors is not defined
+    tags: [sumo.logic.api.collector.actions.update]

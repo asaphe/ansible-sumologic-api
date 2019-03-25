@@ -1,0 +1,39 @@
+---
+  - block:
+      - name: template pre-defined ingest budgets json
+        set_fact:
+          _ingestbudget: "{{ _ingestbudget | default({}) | combine( {'name': item['key'], 'fieldValue': fieldValue, 'capacityBytes': item['value']['capacityBytes'], 'timezone': item['value']['timezone'], 'resetTime': item['value']['resetTime'], 'description': description, 'action': item['value']['action']}) }}"
+        with_dict: "{{ predefined_ingestbudgets }}"
+        register: _ingestbudget_templates
+        vars:
+          fieldValue: "{{ item['key'] }}_{{ item['value']['fieldValue'] }}_gb"
+          description: "{{ item['key'] }}_ingestbudget"
+
+      - name: create a list of ingest budget jsons
+        set_fact:
+          _predef_ingestbudgets: "{{ _ingestbudget_templates.results | map(attribute='ansible_facts._ingestbudget') | list }}"
+
+      # env_ingest_budget is an inventory var per ENV
+      - name: create a list of pre-defined ingest budget names
+        set_fact:
+          _predef_ingestbudget_names: "{{ _predef_ingestbudgets | selectattr('fieldValue') | map(attribute='fieldValue') | list }}"
+
+    tags: [always]
+
+  - block:
+      - name: Get Budgets
+        import_tasks: ingestbudget-get.yml
+        tags: [sumo.logic.api.ingestbudget.get, sumo.logic.api.ingestbudget.actions]
+
+      - name: Get Collectors
+        import_tasks: collector-get.yml
+        tags: [sumo.logic.api.collector.get, sumo.logic.api.collector.actions]
+
+  - block:
+      - name: Ingest Budget actions  (Create/Update/Delete)
+        import_tasks: ingestbudget-actions.yml
+        tags: [sumo.logic.api.ingestbudget.actions]
+
+      - name: Collector actions (Create/Update/Delete)
+        import_tasks: collector-actions.yml
+        tags: [sumo.logic.api.collector.actions]

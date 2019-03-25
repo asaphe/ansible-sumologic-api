@@ -1,0 +1,17 @@
+---
+  - block:
+      - name: get ingest budgets
+        uri:
+          method: GET
+          url: "{{ url_budgets }}"
+          user: "{{ sApi_username }}"
+          password: "{{ sApi_password }}"
+          force_basic_auth: yes
+        register: rjson_ingestbudgets
+
+      - name: create an ingest budgets dictionary (api json response)
+        set_fact:
+          _ingestbudget: "{{ _ingestbudget|default({}) | combine( {'name': item['name'], 'id': item['id'], 'fieldValue': item['fieldValue'], 'capacityBytes': item['capacityBytes'], 'timezone': item['timezone'], 'resetTime': item['resetTime'], 'description': item['description'], 'action': item['action']} ) }}"
+        with_items: "{{ rjson_ingestbudgets | json_query('json.data[*]') }}"
+        register: _ingestbudgets
+        when: rjson_ingestbudgets is succeeded

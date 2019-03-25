@@ -1,0 +1,64 @@
+---
+  - block:
+      - name: get collectors
+        uri:
+          method: GET
+          url: "{{ url_collectors }}"
+          user: "{{ sApi_username }}"
+          password: "{{ sApi_password }}"
+          force_basic_auth: yes
+        register: rjson_collectors
+        # returns a json with a complete list of defined collectors (without etag)
+
+  - block:
+      - name: get collectors by names/ids (filter_bynames/filter_byids)
+        uri:
+          method: GET
+          url: "{{ url_collectors }}/{{ item['id'] }}"
+          user: "{{ sApi_username }}"
+          password: "{{ sApi_password }}"
+          force_basic_auth: yes
+          return_content: yes
+        with_items: "{{ rjson_collectors.json.collectors }}"
+        register: rjson_collectors_detailed_by_namesids
+        when:
+          - (rjson_collectors is succeeded and item.collectorType in _collector_types)
+          - (filter_bynames is defined and (item.name in filter_bynames) or filter_byids is defined and (item.id in filter_byids))
+        # filter_bynames is defined [must be a list]
+        # filter_byids is defined [must be a list]
+
+      - name: "get collectors by '{{env}}'"
+        uri:
+          method: GET
+          url: "{{ url_collectors }}/{{ item['id'] }}"
+          user: "{{ sApi_username }}"
+          password: "{{ sApi_password }}"
+          force_basic_auth: yes
+          return_content: yes
+        with_items: "{{ rjson_collectors.json.collectors }}"
+        register: rjson_collectors_detailed_byenv
+        when:
+          - (filter_byids is not defined and filter_bynames is not defined and not get_dangling_collectors|bool)
+          - (rjson_collectors is succeeded)
+          - (item.collectorType in _collector_types and env in item.name.split()[0])
+        # DEFAULT BEHAVIOUR -- runs when nothing else is set
+
+      - name: get all dangling collectors
+        uri:
+          method: GET
+          url: "{{ url_collectors }}/{{ item['id'] }}"
+          user: "{{ sApi_username }}"
+          password: "{{ sApi_password }}"
+          force_basic_auth: yes
+          return_content: yes
+        with_items: "{{ rjson_collectors.json.collectors }}"
+        register: rjson_collectors_detailed_bydangling
+        when:
+          - (filter_byids is not defined and filter_bynames is not defined)
+          - (get_dangling_collectors|bool)
+          - (rjson_collectors is succeeded)
+          - (not item.name is match(regexp))
+          - (item.collectorType in _collector_types)
+        vars:
+          regexp: "^(demo |dev |prod ).*$"
+        # Run on collectors *NOT* matching the regex pattern above (a collector must *start* with an 'ENV ' [\s == whitespace])

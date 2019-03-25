@@ -1,0 +1,164 @@
+---
+get_dangling_collectors: false
+update_ingestbudgets: false
+delete_ingestbudgets: false
+
+base_uri: 'https://api.us2.sumologic.com/api'
+
+_collector_types: "{{ collector_type_filter|default(['Installable','Hosted'])|list }}"
+_env_ingestbudget: "{{ env_ingestbudget }}"
+
+sumologic:
+  api_credentials:
+    accessid: "{{ sumologic_credentials.accessid }}"
+    accesskey: "{{ sumologic_credentials.accesskey }}"
+  endpoints:
+    collectors_uri: "{{ base_uri }}/v1/collectors"
+    ingestbudgets_uri: "{{ base_uri }}/v1beta/ingestBudgets"
+  _collector_pattern: "{{ collector_pattern|default('swarm-') }}"
+  _application_budget_envs: "{{ application_budget_envs|default(['prod','dev']) }}"
+
+predefined_ingestbudgets:
+  default:
+    fieldValue: '1'
+    capacityBytes: '1000000000'
+    resetTime: 00:00
+    action: stopCollecting
+    timezone: 'Etc/UTC'
+  demo:
+    fieldValue: '1'
+    capacityBytes: '1000000000'
+    resetTime: 00:00
+    action: stopCollecting
+    timezone: 'Etc/UTC'
+  dev:
+    fieldValue: '1'
+    capacityBytes: '1000000000'
+    resetTime: 00:00
+    action: stopCollecting
+    timezone: 'Etc/UTC'
+  dev_application:
+    fieldValue: '4'
+    capacityBytes: '4000000000'
+    resetTime: 00:00
+    action: stopCollecting
+    timezone: 'Etc/UTC'
+  prod:
+    fieldValue: '2'
+    capacityBytes: '2000000000'
+    resetTime: 00:00
+    action: stopCollecting
+    timezone: 'Etc/UTC'
+  prod_application:
+    fieldValue: '6'
+    capacityBytes: '6000000000'
+    resetTime: 00:00
+    action: stopCollecting
+    timezone: 'Etc/UTC'
+
+## Simplify variables ##
+sApi_username: "{{ sumologic['api_credentials']['accessid'] }}"
+sApi_password: "{{ sumologic['api_credentials']['accesskey'] }}"
+url_collectors: "{{ sumologic['endpoints']['collectors_uri'] }}"
+url_budgets: "{{ sumologic['endpoints']['ingestbudgets_uri'] }}"
+
+## Jinja Templates ##
+_updatebudget_json: |
+  {
+  {% for _item in updated_ingestbudgets %}
+    {% for key,value in _item.items() %}
+    "name": "{{ value['name']|default(key) }}",
+    "fieldValue": "{{ value['fieldValue'] }}",
+    "capacityBytes": "{{ value['capacityBytes'] }}",
+    "timezone": "{{ value['timezone'] }}",
+    "resetTime": "{{ value['resetTime'] }}",
+    "description": "{{ value['description']|default(key) }}",
+    "action": ""{{ value['action'] }}","
+    {% endfor %}
+  {% endfor %}
+  }
+
+_collector_json: |
+  {% if (item.item.collectorType is match('Installable')) %}
+  {
+    "collector": {
+      "id": {{ item.item.id }},
+      "name": "{{ item.item.name }}",
+    {% if (item.item.description.split()[1] is search(sumologic['_collector_pattern'])) and (env in sumologic['_application_budget_envs']) %}
+      "description": "{{ item.item.description }}"
+    {% elif env in item.item.name.split()[0] %}
+      "description": "{{ env }}_{{ item.item.name }}_collector",
+    {% elif env not in item.item.name.split()[0] %}
+      "description": "{{ item.item.name }}_collector",
+    {% endif %}
+      "hostName": "{{ item.item.hostName }}",
+      "timeZone": "{{ item.item.timeZone }}",
+      "fields": {
+    {% if (item.item.description.split()[1] is search(sumologic['_collector_pattern'])) and (env in sumologic['_application_budget_envs']) %}
+      {% for _item in _ingestbudget_templates.results|map(attribute='ansible_facts._ingestbudget')|list %}
+        {% if (env+'_application' in _item['description']) %}
+        "_budget": "{{ _item['fieldValue'] }}"
+        {% endif %}
+      {% endfor %}
+    {% else %}
+      {% for _item in _ingestbudget_templates.results|map(attribute='ansible_facts._ingestbudget')|list %}
+        {% if env in _item['name'] and (env in _item['description']) and (env+'_application' not in _item['description']) %}
+        "_budget": "{{ _item['fieldValue'] }}"
+        {% elif (env not in item.item.name.split()[0]) and (env not in _item['fieldValue']) %}
+        "_budget": "{{ _item['fieldValue'] }}"
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+      },
+      "links": [
+        {
+          "rel": "sources",
+          "href": "/v1/collectors/{{ item.item.id }}/sources"
+        }
+      ],
+      "ephemeral": {{ item.item.ephemeral|lower }},
+      "targetCpu": {{ item.item.targetCpu }},
+      "sourceSyncMode": "{{ item.item.sourceSyncMode }}",
+      "collectorType": "{{ item.item.collectorType }}",
+      "collectorVersion": "{{ item.item.collectorVersion }}",
+      "osVersion": "{{ item.item.osVersion }}",
+      "osName": "{{ item.item.osName }}",
+      "osArch": "{{ item.item.osArch }}",
+      "lastSeenAlive": {{ item.item.lastSeenAlive }},
+      "alive": {{ item.item.alive|lower }}
+    }
+  }
+  {% elif (item.item.collectorType is match('Hosted')) %}
+  {
+    "collector": {
+      "alive": {{ item.item.alive|lower }},
+      "category": "{{ item.item.category|default() }}",
+      "collectorType": "{{ item.item.collectorType }}",
+      "collectorVersion": "{{ item.item.collectorVersion }}",
+      {% if (env in item.item.name.split()[0]) %}
+      "description": "{{ env }}_{{ item.item.name }}_collector",
+      {% elif (env not in item.item.name.split()[0]) %}
+      "description": "{{ item.item.name }}_collector",
+      {% endif %}
+      "fields": {
+      {% for _item in _ingestbudget_templates.results|map(attribute='ansible_facts._ingestbudget')|list %}
+        {% if (env not in item.item.name.split()[0]) and ('default_1_gb' in _item['fieldValue']) %}
+        "_budget": "{{ _item['fieldValue'] }}"
+        {% elif (_item['fieldValue'].split('_')[0] in item.item.name.split()[0]) and (env+'_application' not in _item['description']) %}
+        "_budget": "{{ _item['fieldValue'] }}"
+        {% endif %}
+      {% endfor %}
+      },
+      "id": {{ item.item.id }},
+      "lastSeenAlive": {{ item.item.lastSeenAlive }},
+      "links": [
+        {
+          "rel": "sources",
+          "href": "/v1/collectors/{{ item.item.id }}/sources"
+        }
+      ],
+      "name": "{{ item.item.name }}",
+      "timeZone": "{{ item.item.timeZone }}"
+    }
+  }
+  {% endif %}
